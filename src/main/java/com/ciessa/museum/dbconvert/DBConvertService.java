@@ -32,10 +32,9 @@ public class DBConvertService {
 			sqlConn = getSQLConnection(config);
 			iSeriesConn = getISeriesConnection(config);
 
-//			createWorkingEnvironment(config, iSeriesConn);
-//			createSQLDDL(config, iSeriesConn, sqlConn);
+			createWorkingEnvironment(config, iSeriesConn);
+			createSQLDDL(config, iSeriesConn, sqlConn);
 			copyData(config, iSeriesConn, sqlConn);
-			
 
 		} catch( Exception e ) {
 			log.log(Level.SEVERE, e.getMessage(), e);
@@ -48,8 +47,8 @@ public class DBConvertService {
 	}
 
 	public void copyData( Properties config, Connection iSeriesConn, Connection sqlConn ) throws SQLException {
+
 		String workLib = config.getProperty("iseries.workLib", Defaults.ISERIES_WORKLIB);
-		String owner = config.getProperty("mssql.owner", Defaults.MSSQL_OWNER);
 		Boolean createOnlyFilesWithData = Boolean.parseBoolean(config.getProperty("iseries.createOnlyFilesWithData", Defaults.ISERIES_CREATEONLYFILESWITHDATA));
 		List<String> ommitFiles = Arrays.asList(config.getProperty("iseries.ommitFiles", Defaults.ISERIES_OMMITFILES).split(","));
 		Statement stmt = null;
@@ -73,7 +72,8 @@ public class DBConvertService {
 					
 					System.out.println("Processing file " + file + "...");
 					
-					SQL = "SELECT * FROM " + workLib + ".DSPFFD WHERE WHFILE = '" + file + "' AND WHLIB = '" + library + "'";
+					SQL = "SELECT DISTINCT WHFILE, WHLIB, WHFTYP, WHFLDE, WHFLDB, WHFLDD, WHFLDP, WHFTXT, WHFLDT FROM "
+							+ workLib + ".DSPFFD WHERE WHFILE = '" + file + "' AND WHLIB = '" + library + "'";
 					Statement stmt2 = iSeriesConn.createStatement();
 					ResultSet rs2 = stmt2.executeQuery(SQL);
 					fieldList.clear();
@@ -108,9 +108,9 @@ public class DBConvertService {
 					// Iterate through the records to insert  
 					while (rs2.next()) {
 						StringBuffer sb = new StringBuffer();
-						sb.append("INSERT INTO " + file + "(member");
+						sb.append("INSERT INTO " + file + "( MEMBER");
 						for(FieldDescription fd : fieldList)
-							sb.append(",").append(fd.getField());
+							sb.append(",\"").append(fd.getField()).append("\"");
 						sb.append(") values ('*FIRST'");
 						for(FieldDescription fd : fieldList) {
 							sb.append(",");
@@ -153,19 +153,14 @@ public class DBConvertService {
 						Statement w = sqlConn.createStatement();  
 						w.execute(sb.toString());
 						w.close();
-
 					}
-				
-				
 				}
 			}
+
 		} finally {
 			if (rs != null ) try {rs.close();} catch(Exception e) {}
 			if (stmt != null ) try {stmt.close();} catch(Exception e) {}
 		}
-		
-		
-		
 
 	}
 	
@@ -181,7 +176,7 @@ public class DBConvertService {
 		Set<String> alreadyOmmited = new HashSet<String>();
 
 		try {
-			String SQL = "SELECT * FROM " + workLib + ".DSPFD";  
+			String SQL = "SELECT * FROM " + workLib + ".DSPFD WHERE MLFTYP = 'P'";  
 			stmt = iSeriesConn.createStatement();  
 			rs = stmt.executeQuery(SQL);
 			while( rs.next()) {
@@ -196,7 +191,8 @@ public class DBConvertService {
 				validFiles.remove(ommitFile);
 			}
 			
-			SQL = "SELECT * FROM " + workLib + ".DSPFFD WHERE WHFTYP = 'P' AND WHFILE IN (" + toSQLList(validFiles) + ")";
+			SQL = "SELECT DISTINCT WHFILE, WHLIB, WHFTYP, WHFLDE, WHFLDB, WHFLDD, WHFLDP, WHFTXT, WHFLDT FROM "
+					+ workLib + ".DSPFFD WHERE WHFTYP = 'P' AND WHFILE IN (" + toSQLList(validFiles) + ")";
 			stmt = iSeriesConn.createStatement();
 			rs = stmt.executeQuery(SQL);
 			String lastFile = null;
@@ -229,7 +225,7 @@ public class DBConvertService {
 							}
 							command = new StringBuffer();
 							command.append("CREATE TABLE ").append(owner).append(".").append("\"" + fd.getFile() + "\"").append("( ");
-							command.append("member VARCHAR(10)");
+							command.append("MEMBER VARCHAR(10)");
 
 							lastFile = fd.getFile();
 							columnCount = 0;
@@ -278,6 +274,14 @@ public class DBConvertService {
 					}
 				}
 			}
+			
+			if( command != null) {
+				command.append(")");
+				if( columnCount < 1024 ) {
+					executeSQLCreateTable(config, sqlConn, lastFile, command.toString());
+				}
+			}
+
 		} finally {
 			if (rs != null ) try {rs.close();} catch(Exception e) {}
 			if (stmt != null ) try {stmt.close();} catch(Exception e) {}
@@ -286,6 +290,7 @@ public class DBConvertService {
 	}
 	
 	public String toSQLList(Set<String> input) {
+
 		StringBuffer sb = new StringBuffer();
 		Iterator<String> i = input.iterator();
 		boolean isFirst = true;
@@ -295,7 +300,9 @@ public class DBConvertService {
 			isFirst = false;
 			sb.append("'").append(obj).append("'");
 		}
+
 		return sb.toString();
+
 	}
 	
 	public void executeSQLCreateTable( Properties config, Connection sqlConnection, String tableName, String ddl) throws SQLException {
@@ -399,9 +406,11 @@ public class DBConvertService {
 	}
 	
 	public String escape(String source) {
+
 		String dst = new String(source);
 		dst = dst.replaceAll("'", "''");
 		return dst;
+
 	}
 	
 	public Connection getISeriesConnection( Properties config ) throws ClassNotFoundException, SQLException {

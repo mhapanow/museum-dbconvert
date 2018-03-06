@@ -18,14 +18,14 @@ public class FieldDescription {
 	}
 	
 	public String safeString(String input) {
-//		String ret = input.replaceAll("\\$", "S");
+		String ret = input.replaceAll("\\$", "S");
 //		ret = ret.replaceAll("@", "A");
 //		if( ret.equals("KEY")) ret = "KEY_"; 
 //		if( ret.equals("USER")) ret = "USER_"; 
 //		if( ret.equals("READ")) ret = "READ_"; 
 //		if( ret.equals("WRITE")) ret = "WRITE_"; 
 //		return ret;
-		return input;
+		return ret;
 	}
 	
 	public FieldDescription(String file, String library, String fileType, String field, int lenght, int digits,
