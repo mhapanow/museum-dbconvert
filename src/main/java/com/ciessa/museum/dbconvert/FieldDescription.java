@@ -11,6 +11,7 @@ public class FieldDescription {
 	private int decimals;
 	private String text;
 	private String fieldType;
+	private String originalField;
 	
 	public FieldDescription () {
 		super();
@@ -34,6 +35,7 @@ public class FieldDescription {
 		this.library = safeString(library);
 		this.fileType = safeString(fileType);
 		this.field = safeString(field);
+		this.originalField = field;
 		this.lenght = lenght;
 		this.digits = digits;
 		this.decimals = decimals;
@@ -165,6 +167,20 @@ public class FieldDescription {
 	 */
 	public void setFieldType(String fieldType) {
 		this.fieldType = fieldType;
+	}
+
+	/**
+	 * @return the originalField
+	 */
+	public String getOriginalField() {
+		return originalField;
+	}
+
+	/**
+	 * @param originalField the originalField to set
+	 */
+	public void setOriginalField(String originalField) {
+		this.originalField = originalField;
 	}
 
 	/* (non-Javadoc)
