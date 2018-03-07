@@ -16,6 +16,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -23,7 +24,11 @@ public class DBConvertService {
 
 	private static final Logger log = Logger.getLogger(DBConvertService.class.getName());
 	
-	public void doConvert( Properties config ) throws Exception {
+	public static final Integer STEP_FD = 1;
+	public static final Integer STEP_DDL = 2;
+	public static final Integer STEP_COPY = 3;
+	
+	public void doConvert( Properties config, List<Integer> steps, List<String> forcedFiles ) throws Exception {
 		
 		Connection sqlConn = null;
 		Connection iSeriesConn = null;
@@ -32,9 +37,9 @@ public class DBConvertService {
 			sqlConn = getSQLConnection(config);
 			iSeriesConn = getISeriesConnection(config);
 
-			createWorkingEnvironment(config, iSeriesConn);
-			createSQLDDL(config, iSeriesConn, sqlConn);
-			copyData(config, iSeriesConn, sqlConn);
+			if(steps.isEmpty() || steps.contains(STEP_FD)) createWorkingEnvironment(config, iSeriesConn);
+			if(steps.isEmpty() || steps.contains(STEP_DDL)) createSQLDDL(config, forcedFiles, iSeriesConn, sqlConn);
+			if(steps.isEmpty() || steps.contains(STEP_COPY)) copyData(config, forcedFiles, iSeriesConn, sqlConn);
 
 		} catch( Exception e ) {
 			log.log(Level.SEVERE, e.getMessage(), e);
@@ -46,10 +51,9 @@ public class DBConvertService {
 		
 	}
 
-	public void copyData( Properties config, Connection iSeriesConn, Connection sqlConn ) throws SQLException {
+	public void copyData( Properties config, List<String> forcedFiles, Connection iSeriesConn, Connection sqlConn ) throws SQLException {
 
 		String workLib = config.getProperty("iseries.workLib", Defaults.ISERIES_WORKLIB);
-		Boolean createOnlyFilesWithData = Boolean.parseBoolean(config.getProperty("iseries.createOnlyFilesWithData", Defaults.ISERIES_CREATEONLYFILESWITHDATA));
 		List<String> ommitFiles = Arrays.asList(config.getProperty("iseries.ommitFiles", Defaults.ISERIES_OMMITFILES).split(","));
 		Statement stmt = null;
 		ResultSet rs = null;
@@ -59,100 +63,130 @@ public class DBConvertService {
 		SimpleDateFormat sdfz = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.000");
 		
 		List<FieldDescription> fieldList = new ArrayList<>();
+		log.log(Level.INFO, "copying data files...");
 		
 		try {
-			String SQL = "SELECT * FROM " + workLib + ".DSPFD";  
+			String SQL = "SELECT DISTINCT MLNRCD, MLFILE, MLLIB, MLNAME FROM " + workLib + ".DSPFD WHERE MLNRCD > 0 ORDER BY MLLIB, MLFILE, MLNAME";  
 			stmt = iSeriesConn.createStatement();  
 			rs = stmt.executeQuery(SQL);
 			while( rs.next()) {
-				int records = rs.getInt("MLNRCD");
 				String file = rs.getString("MLFILE").trim();
 				String library = rs.getString("MLLIB").trim();
-				if(( records > 0 || !createOnlyFilesWithData) && ( !ommitFiles.contains(file))) {
-					
-					System.out.println("Processing file " + file + "...");
-					
-					SQL = "SELECT DISTINCT WHFILE, WHLIB, WHFTYP, WHFLDE, WHFLDB, WHFLDD, WHFLDP, WHFTXT, WHFLDT FROM "
-							+ workLib + ".DSPFFD WHERE WHFILE = '" + file + "' AND WHLIB = '" + library + "'";
-					Statement stmt2 = iSeriesConn.createStatement();
-					ResultSet rs2 = stmt2.executeQuery(SQL);
-					fieldList.clear();
-					
-					// Iterate through the data in the result set and display it.  
-					while (rs2.next()) {
-						String fileType = rs2.getString("WHFTYP").trim();
-						String field = rs2.getString("WHFLDE").trim();
-						int lenght = rs2.getInt("WHFLDB");
-						int digits = rs2.getInt("WHFLDD");
-						int decimals = rs2.getInt("WHFLDP");
-						String text = rs2.getString("WHFTXT").trim();
-						String fieldType = rs2.getString("WHFLDT").trim();
+				String member = rs.getString("MLNAME").trim();
+				if(!ommitFiles.contains(file)) {
 
-						FieldDescription fd = new FieldDescription(file, library, fileType, field, lenght, digits, decimals, text, fieldType);
-						fieldList.add(fd);
-					}
+					if(forcedFiles.isEmpty() || forcedFiles.contains(file)) {
 
-					rs2.close();
-					stmt2.close();
+						log.log(Level.INFO, "Processing file " + library + "/" + file + " and member " + member + "...");
 
-					// Selects the records and inserts them in SQL Server
+						call(config, iSeriesConn, "OVRDBF FILE(" + file + ") TOFILE(" + library + "/" + file +") MBR(" + member + ") OVRSCOPE(*JOB)");
+						SQL = "SELECT DISTINCT WHFILE, WHLIB, WHFTYP, WHFLDE, WHFLDB, WHFLDD, WHFLDP, WHFTXT, WHFLDT FROM "
+								+ workLib + ".DSPFFD WHERE WHFILE = '" + file + "' AND WHLIB = '" + library + "'";
+						Statement stmt2 = iSeriesConn.createStatement();
+						ResultSet rs2 = stmt2.executeQuery(SQL);
+						fieldList.clear();
 
-					Statement del = sqlConn.createStatement();  
-					del.execute("DELETE FROM " + file);
-					del.close();
+						// Iterate through the data in the result set and display it.  
+						while (rs2.next()) {
+							String fileType = rs2.getString("WHFTYP").trim();
+							String field = rs2.getString("WHFLDE").trim();
+							int lenght = rs2.getInt("WHFLDB");
+							int digits = rs2.getInt("WHFLDD");
+							int decimals = rs2.getInt("WHFLDP");
+							String text = rs2.getString("WHFTXT").trim();
+							String fieldType = rs2.getString("WHFLDT").trim();
 
-					SQL = "SELECT * FROM " + library + "." + file;
-					stmt2 = iSeriesConn.createStatement();
-					rs2 = stmt2.executeQuery(SQL);
-
-					// Iterate through the records to insert  
-					while (rs2.next()) {
-						StringBuffer sb = new StringBuffer();
-						sb.append("INSERT INTO " + file + "( MEMBER");
-						for(FieldDescription fd : fieldList)
-							sb.append(",\"").append(fd.getField()).append("\"");
-						sb.append(") values ('*FIRST'");
-						for(FieldDescription fd : fieldList) {
-							sb.append(",");
-							switch (fd.getFieldType()) { 
-							case "A":
-								String v = rs2.getString(fd.getOriginalField());
-								v = v.replaceAll("'", "''");
-								sb.append("'").append(v.trim()).append("'");
-								break;
-							case "S":
-							case "P":
-							case "B":
-								if(fd.getDecimals() == 0 ) {
-									long v1 = rs2.getLong(fd.getOriginalField());
-									sb.append(v1);
-								} else {
-									double v1 = rs2.getDouble(fd.getOriginalField());
-									sb.append(v1);
-								}
-								break;
-							case "L":
-								Date d = rs2.getDate(fd.getOriginalField());
-								sb.append("'").append(sdfd.format(d)).append("'");
-								break;
-							case "T":
-								Time t = rs2.getTime(fd.getOriginalField());
-								sb.append("'").append(sdft.format(t)).append("'");
-								break;
-							case "Z":
-								Date z = rs2.getTimestamp(fd.getOriginalField());
-								sb.append("'").append(sdfz.format(z)).append("'");
-								break;
-							default:
-							}
+							FieldDescription fd = new FieldDescription(file, library, fileType, field, lenght, digits, decimals, text, fieldType);
+							fieldList.add(fd);
 						}
-						sb.append(")");
 
-						System.out.println(sb.toString());
-						// Executes the insert
+						rs2.close();
+						stmt2.close();
+
+						// Deletes the previous records
+						Statement del = sqlConn.createStatement();
+						del.execute("DELETE FROM " + file + " WHERE MEMBER='" + member + "'");
+						del.close();
+
+						// Begins batch execution
+						sqlConn.setAutoCommit(false);
 						Statement w = sqlConn.createStatement();  
-						w.execute(sb.toString());
-						w.close();
+						long recCount = 0;
+						
+						// Selects the records and inserts them in SQL Server
+						SQL = "SELECT * FROM " + file;
+						stmt2 = iSeriesConn.createStatement();
+						rs2 = stmt2.executeQuery(SQL);
+
+						// Iterate through the records to insert  
+						while (rs2.next()) {
+							StringBuffer sb = new StringBuffer();
+							sb.append("INSERT INTO " + file + "( PKID, MEMBER");
+							for(FieldDescription fd : fieldList)
+								sb.append(",\"").append(fd.getField()).append("\"");
+							sb.append(") values ('" + UUID.randomUUID().toString() + "'");
+							sb.append(",'" + member + "'");
+							for(FieldDescription fd : fieldList) {
+								sb.append(",");
+								switch (fd.getFieldType()) { 
+								case "A":
+									String v = rs2.getString(fd.getOriginalField());
+									v = v.replaceAll("'", "''");
+									sb.append("'").append(v.trim()).append("'");
+									break;
+								case "S":
+								case "P":
+								case "B":
+									if(fd.getDecimals() == 0 ) {
+										long v1 = rs2.getLong(fd.getOriginalField());
+										sb.append(v1);
+									} else {
+										double v1 = rs2.getDouble(fd.getOriginalField());
+										sb.append(v1);
+									}
+									break;
+								case "L":
+									Date d = rs2.getDate(fd.getOriginalField());
+									sb.append("'").append(sdfd.format(d)).append("'");
+									break;
+								case "T":
+									Time t = rs2.getTime(fd.getOriginalField());
+									sb.append("'").append(sdft.format(t)).append("'");
+									break;
+								case "Z":
+									Date z = rs2.getTimestamp(fd.getOriginalField());
+									sb.append("'").append(sdfz.format(z)).append("'");
+									break;
+								default:
+								}
+							}
+							sb.append(")");
+
+//							System.out.println(sb.toString());
+							// Executes the insert
+							recCount++;
+							w.addBatch(sb.toString());
+							if( recCount % 1000 == 0 ) {
+								System.out.println("inserting " + recCount + " records...");
+								recCount = 0;
+								w.executeBatch();
+								sqlConn.commit();
+								w.close();
+								w = sqlConn.createStatement();  
+							}
+							sqlConn.setAutoCommit(true);
+							
+						}
+
+						if( recCount > 0 ) {
+							System.out.println("inserting " + recCount + " records...");
+							w.executeBatch();
+							sqlConn.commit();
+							w.close();
+						}
+						
+						call(config, iSeriesConn, "DLTOVR FILE(" + file + ") LVL(*JOB)");
+
 					}
 				}
 			}
@@ -164,7 +198,7 @@ public class DBConvertService {
 
 	}
 	
-	public void createSQLDDL( Properties config, Connection iSeriesConn, Connection sqlConn ) throws SQLException {
+	public void createSQLDDL( Properties config, List<String> forcedFiles, Connection iSeriesConn, Connection sqlConn ) throws SQLException {
 
 		String workLib = config.getProperty("iseries.workLib", Defaults.ISERIES_WORKLIB);
 		String owner = config.getProperty("mssql.owner", Defaults.MSSQL_OWNER);
@@ -175,6 +209,8 @@ public class DBConvertService {
 		Set<String> validFiles = new HashSet<String>();
 		Set<String> alreadyOmmited = new HashSet<String>();
 
+		log.log(Level.INFO, "Creating DDLs...");
+
 		try {
 			String SQL = "SELECT * FROM " + workLib + ".DSPFD WHERE MLFTYP = 'P'";  
 			stmt = iSeriesConn.createStatement();  
@@ -182,7 +218,9 @@ public class DBConvertService {
 			while( rs.next()) {
 				int records = rs.getInt("MLNRCD");
 				String file = rs.getString("MLFILE").trim();
-				if( records > 0 || !createOnlyFilesWithData) validFiles.add(file);
+				if( forcedFiles.isEmpty() || forcedFiles.contains(file)) {
+					if( records > 0 || !createOnlyFilesWithData) validFiles.add(file);
+				}
 			}
 			rs.close();
 			stmt.close();
@@ -217,7 +255,11 @@ public class DBConvertService {
 						if( !fd.getFile().equals(lastFile)) {
 							if(lastFile != null ) {
 								if( command != null) {
-									command.append(")");
+									command.append(", CONSTRAINT [PK_" + lastFile + "_1] PRIMARY KEY CLUSTERED \r\n" + 
+											"(\r\n" + 
+											"	[PKID] ASC\r\n" + 
+											")WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]\r\n" + 
+											") ON [PRIMARY]");
 									if( columnCount < 1024 ) {
 										executeSQLCreateTable(config, sqlConn, lastFile, command.toString());
 									}
@@ -225,6 +267,7 @@ public class DBConvertService {
 							}
 							command = new StringBuffer();
 							command.append("CREATE TABLE ").append(owner).append(".").append("\"" + fd.getFile() + "\"").append("( ");
+							command.append("PKID VARCHAR(36), ");
 							command.append("MEMBER VARCHAR(10)");
 
 							lastFile = fd.getFile();
@@ -269,14 +312,18 @@ public class DBConvertService {
 					}
 				}  else {
 					if(!alreadyOmmited.contains(file)) {
-						System.out.println("Ommiting file " + file + "...");
+						log.log(Level.INFO, "Ommiting file " + file + "...");
 						alreadyOmmited.add(file);
 					}
 				}
 			}
 			
 			if( command != null) {
-				command.append(")");
+				command.append(", CONSTRAINT [PK_" + lastFile + "_1] PRIMARY KEY CLUSTERED \r\n" + 
+						"(\r\n" + 
+						"	[PKID] ASC\r\n" + 
+						")WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]\r\n" + 
+						") ON [PRIMARY]");
 				if( columnCount < 1024 ) {
 					executeSQLCreateTable(config, sqlConn, lastFile, command.toString());
 				}
@@ -311,16 +358,18 @@ public class DBConvertService {
 		if (Boolean.parseBoolean(config.getProperty("mssql.dropTables", Defaults.MSSQL_DROPTABLES))) {
 			StringBuffer sb = new StringBuffer();
 			sb.append("if exists (select * from sysobjects where name='").append(tableName).append("' and xtype='U') drop table ").append("\"" + tableName + "\"");
-			System.out.println(sb.toString());
+//			System.out.println(sb.toString());
 			stmt = sqlConnection.createStatement();  
 			stmt.execute(sb.toString());
 			stmt.close();
 		}
 		
+		log.log(Level.INFO, "Creating table " + tableName + "...");
+		
 		StringBuffer sb = new StringBuffer();
 		sb.append("if not exists (select * from sysobjects where name='").append(tableName).append("' and xtype='U') ");
 		sb.append(ddl);
-		System.out.println(sb.toString());
+//		System.out.println(sb.toString());
 		stmt = sqlConnection.createStatement();  
 		stmt.execute(sb.toString());
 		stmt.close();

@@ -3,6 +3,9 @@ package com.ciessa.museum.dbconvert.cli;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Properties;
 
 import com.ciessa.museum.dbconvert.DBConvertService;
@@ -20,6 +23,8 @@ public class DBConvert {
 		else
 			parser = base;
 		parser.accepts("config", "Configuration File").withRequiredArg().ofType(String.class);
+		parser.accepts("force", "Comma separated list of forced files").withRequiredArg().ofType(String.class);
+		parser.accepts("steps", "Comma separated list of steps to run: 1=Generate FD,2=Create SQL DDLs,3=Copy Data").withRequiredArg().ofType(String.class);
 		return parser;
 	}
 
@@ -37,6 +42,22 @@ public class DBConvert {
 			configFileName = "config.properties";
 		}
 
+		List<String> forcedFiles = new ArrayList<>();
+		if (options.has("force")) {
+			List<String> tmp = Arrays.asList(((String)options.valueOf("force")).split(","));
+			for( String s : tmp ) {
+				forcedFiles.add(s.trim());
+			}
+		}
+		
+		List<Integer> steps = new ArrayList<>();
+		if (options.has("steps")) {
+			List<String> tmp = Arrays.asList(((String)options.valueOf("steps")).split(","));
+			for( String s : tmp ) {
+				steps.add(Integer.valueOf(s));
+			}
+		}
+		
 		// Loads the configuration file
 		Properties config = new Properties();
 		try {
@@ -50,11 +71,10 @@ public class DBConvert {
 		// Runs the converter
 		DBConvertService service = new DBConvertService();
 		try {
-			service.doConvert(config);
+			service.doConvert(config, steps, forcedFiles);
 		} catch ( Exception e ) {
 			e.printStackTrace();
 		}
 		
-
 	}
 }
