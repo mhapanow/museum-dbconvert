@@ -17,7 +17,7 @@ public class Defaults {
 	public static String ISERIES_PASSWORD = "museum";
 	public static String ISERIES_WORKLIB = "CZAWKUY";
 	public static String ISERIES_DATALIBS = "CZAPDCITBK,CZAPDUTIL";
-	public static String ISERIES_TRANSFORMEDFILES = "CFP00101";
+	public static String ISERIES_TRANSFORMEDFILES = "Cfp001220";
 	public static String ISERIES_OMMITFILES = "CFP001";
 	public static String ISERIES_CREATEONLYFILESWITHDATA = "false";
 

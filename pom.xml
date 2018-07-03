@@ -21,7 +21,7 @@
 		<dependency>
 			<groupId>net.sf.jopt-simple</groupId>
 			<artifactId>jopt-simple</artifactId>
-			<version>4.7</version>
+			<version>4.7</version>	
 		</dependency>
 
 		<!-- https://mvnrepository.com/artifact/com.microsoft.sqlserver/mssql-jdbc -->
