@@ -49,7 +49,7 @@ public class DBConvert {
 				forcedFiles.add(s.trim());
 			}
 		}
-		
+
 		List<Integer> steps = new ArrayList<>();
 		if (options.has("steps")) {
 			List<String> tmp = Arrays.asList(((String)options.valueOf("steps")).split(","));

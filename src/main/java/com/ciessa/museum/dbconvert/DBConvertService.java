@@ -132,7 +132,8 @@ public class DBConvertService {
 								case "A":
 									String v = rs2.getString(fd.getOriginalField());
 									v = v.replaceAll("'", "''");
-									sb.append("'").append(v.trim()).append("'");
+//									sb.append("'").append(v.trim()).append("'");
+									sb.append("'").append(v.replaceAll("\\s+$","")).append("'");
 									break;
 								case "S":
 								case "P":
@@ -162,7 +163,6 @@ public class DBConvertService {
 							}
 							sb.append(")");
 
-//							System.out.println(sb.toString());
 							// Executes the insert
 							recCount++;
 							w.addBatch(sb.toString());
@@ -204,6 +204,7 @@ public class DBConvertService {
 		String owner = config.getProperty("mssql.owner", Defaults.MSSQL_OWNER);
 		Boolean createOnlyFilesWithData = Boolean.parseBoolean(config.getProperty("iseries.createOnlyFilesWithData", Defaults.ISERIES_CREATEONLYFILESWITHDATA));
 		List<String> ommitFiles = Arrays.asList(config.getProperty("iseries.ommitFiles", Defaults.ISERIES_OMMITFILES).split(","));
+		List<String> configForcedFiles = Arrays.asList(config.getProperty("iseries.forcedFiles", Defaults.ISERIES_FORCEDFILES).split(","));
 		Statement stmt = null;
 		ResultSet rs = null;
 		Set<String> validFiles = new HashSet<String>();
@@ -219,7 +220,8 @@ public class DBConvertService {
 				int records = rs.getInt("MLNRCD");
 				String file = rs.getString("MLFILE").trim();
 				if( forcedFiles.isEmpty() || forcedFiles.contains(file)) {
-					if( records > 0 || !createOnlyFilesWithData) validFiles.add(file);
+					if (records > 0 || !createOnlyFilesWithData || configForcedFiles.contains(file))
+						validFiles.add(file);
 				}
 			}
 			rs.close();
@@ -358,7 +360,6 @@ public class DBConvertService {
 		if (Boolean.parseBoolean(config.getProperty("mssql.dropTables", Defaults.MSSQL_DROPTABLES))) {
 			StringBuffer sb = new StringBuffer();
 			sb.append("if exists (select * from sysobjects where name='").append(tableName).append("' and xtype='U') drop table ").append("\"" + tableName + "\"");
-//			System.out.println(sb.toString());
 			stmt = sqlConnection.createStatement();  
 			stmt.execute(sb.toString());
 			stmt.close();
@@ -369,7 +370,6 @@ public class DBConvertService {
 		StringBuffer sb = new StringBuffer();
 		sb.append("if not exists (select * from sysobjects where name='").append(tableName).append("' and xtype='U') ");
 		sb.append(ddl);
-//		System.out.println(sb.toString());
 		stmt = sqlConnection.createStatement();  
 		stmt.execute(sb.toString());
 		stmt.close();

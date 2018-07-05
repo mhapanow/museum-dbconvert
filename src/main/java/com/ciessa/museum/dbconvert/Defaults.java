@@ -18,6 +18,7 @@ public class Defaults {
 	public static String ISERIES_WORKLIB = "CZAWKUY";
 	public static String ISERIES_DATALIBS = "CZAPDCITBK,CZAPDUTIL";
 	public static String ISERIES_TRANSFORMEDFILES = "Cfp001220";
+	public static String ISERIES_FORCEDFILES = "";
 	public static String ISERIES_OMMITFILES = "CFP001";
 	public static String ISERIES_CREATEONLYFILESWITHDATA = "false";
 
