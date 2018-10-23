@@ -405,6 +405,7 @@ public class DBConvertService {
 		// Builds the File Description Object
 		try {
 			call(config, iSeriesConn, "CHKOBJ OBJ(" + workLib + "/DSPFD) OBJTYPE(*FILE)");
+			log.log(Level.INFO, "Clearing File Description File...");
 			call(config, iSeriesConn, "CLRPFM FILE(" + workLib + "/DSPFD)");
 		} catch( SQLException e ) {}
 		for( String dataLib : dataLibs ) {
@@ -419,6 +420,7 @@ public class DBConvertService {
 		// Builds the Fields for File Description Object
 		try {
 			call(config, iSeriesConn, "CHKOBJ OBJ(" + workLib + "/DSPFFD) OBJTYPE(*FILE)");
+			log.log(Level.INFO, "Clearing Field File Description File...");
 			call(config, iSeriesConn, "CLRPFM FILE(" + workLib + "/DSPFFD)");
 		} catch( SQLException e ) {}
 		for( String dataLib : dataLibs ) {
