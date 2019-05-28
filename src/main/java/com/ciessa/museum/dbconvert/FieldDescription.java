@@ -18,14 +18,10 @@ public class FieldDescription {
 	}
 	
 	public String safeString(String input) {
-		String ret = input.replaceAll("\\$", "S");
+		String ret = input.replaceAll("ACAPA\\$", "ACAPAS1");
+		ret = ret.replaceAll("\\$", "S");
 		ret = ret.replaceAll("Ñ", "N");
 		ret = ret.replaceAll("ñ", "n");
-//		if( ret.equals("KEY")) ret = "KEY_"; 
-//		if( ret.equals("USER")) ret = "USER_"; 
-//		if( ret.equals("READ")) ret = "READ_"; 
-//		if( ret.equals("WRITE")) ret = "WRITE_"; 
-//		return ret;
 		return ret;
 	}
 	
